@@ -1,0 +1,151 @@
+---
+- name: Security Hardening
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Backup original sshd_config
+      copy:
+        src: /etc/ssh/sshd_config
+        dest: /etc/ssh/sshd_config.backup
+        remote_src: yes
+        force: no
+
+    - name: Configure SSH daemon
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: '^#?Port ', line: 'Port {{ ssh_port }}' }
+        - { regexp: '^#?PermitRootLogin ', line: 'PermitRootLogin {{ ssh_permit_root_login }}' }
+        - { regexp: '^#?PasswordAuthentication ', line: 'PasswordAuthentication {{ "yes" if ssh_allow_password_auth else "no" }}' }
+        - { regexp: '^#?PubkeyAuthentication ', line: 'PubkeyAuthentication yes' }
+        - { regexp: '^#?ChallengeResponseAuthentication ', line: 'ChallengeResponseAuthentication no' }
+        - { regexp: '^#?UsePAM ', line: 'UsePAM yes' }
+        - { regexp: '^#?X11Forwarding ', line: 'X11Forwarding no' }
+        - { regexp: '^#?MaxAuthTries ', line: 'MaxAuthTries {{ ssh_max_auth_tries }}' }
+        - { regexp: '^#?ClientAliveInterval ', line: 'ClientAliveInterval {{ ssh_client_alive_interval }}' }
+        - { regexp: '^#?ClientAliveCountMax ', line: 'ClientAliveCountMax {{ ssh_client_alive_count_max }}' }
+        - { regexp: '^#?PermitEmptyPasswords ', line: 'PermitEmptyPasswords no' }
+        - { regexp: '^#?Protocol ', line: 'Protocol 2' }
+        - { regexp: '^#?LogLevel ', line: 'LogLevel VERBOSE' }
+      notify: restart ssh
+
+    - name: Ensure SSH privilege separation directory exists
+      file:
+        path: /run/sshd
+        state: directory
+        mode: "0755"
+
+    - name: Validate sshd config
+      command: /usr/sbin/sshd -t
+      changed_when: false
+
+    - name: Configure fail2ban
+      copy:
+        dest: /etc/fail2ban/jail.d/custom.conf
+        content: |
+          [DEFAULT]
+          bantime = {{ fail2ban_bantime }}
+          findtime = {{ fail2ban_findtime }}
+          maxretry = {{ fail2ban_maxretry }}
+
+          [sshd]
+          enabled = true
+          port = {{ ssh_port }}
+          filter = sshd
+          logpath = /var/log/auth.log
+          maxretry = {{ fail2ban_maxretry }}
+
+          [sshd-ddos]
+          enabled = true
+          port = {{ ssh_port }}
+          filter = sshd-ddos
+          logpath = /var/log/auth.log
+          maxretry = 2
+        mode: "0644"
+      notify: restart fail2ban
+
+    - name: Enable and start fail2ban
+      systemd:
+        name: fail2ban
+        enabled: yes
+        state: started
+
+    - name: Apply kernel security settings
+      ansible.posix.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+        sysctl_file: /etc/sysctl.d/99-security.conf
+      loop:
+        - { name: 'net.ipv4.ip_forward', value: '1' }  # required for Docker
+        - { name: 'net.ipv6.conf.all.forwarding', value: '0' }
+        - { name: 'net.ipv4.tcp_syncookies', value: '1' }
+        - { name: 'net.ipv4.tcp_max_syn_backlog', value: '2048' }
+        - { name: 'net.ipv4.tcp_synack_retries', value: '2' }
+        - { name: 'net.ipv4.tcp_syn_retries', value: '5' }
+        - { name: 'net.ipv4.conf.all.rp_filter', value: '1' }
+        - { name: 'net.ipv4.conf.default.rp_filter', value: '1' }
+        - { name: 'net.ipv4.conf.all.accept_redirects', value: '0' }
+        - { name: 'net.ipv6.conf.all.accept_redirects', value: '0' }
+        - { name: 'net.ipv4.conf.all.send_redirects', value: '0' }
+        - { name: 'net.ipv4.icmp_echo_ignore_all', value: '0' }
+        - { name: 'net.ipv4.conf.all.accept_source_route', value: '0' }
+        - { name: 'net.ipv6.conf.all.accept_source_route', value: '0' }
+        - { name: 'net.ipv4.conf.all.log_martians', value: '1' }
+        - { name: 'kernel.dmesg_restrict', value: '1' }
+        - { name: 'kernel.kptr_restrict', value: '2' }
+        - { name: 'kernel.yama.ptrace_scope', value: '1' }
+
+    - name: Install auditd
+      apt:
+        name: auditd
+        state: present
+
+    - name: Configure auditd rules
+      copy:
+        dest: /etc/audit/rules.d/security.rules
+        content: |
+          -D
+          -b 8192
+          -f 1
+          -a always,exit -F arch=b64 -S execve -k exec
+          -w /etc/passwd -p wa -k passwd_changes
+          -w /etc/group -p wa -k group_changes
+          -w /etc/shadow -p wa -k shadow_changes
+          -w /etc/sudoers -p wa -k sudoers_changes
+          -w /etc/ssh/sshd_config -p wa -k sshd_config
+          -w /var/log/auth.log -p wa -k auth_log
+          -w /etc/network/ -p wa -k network_changes
+          -w /etc/hosts -p wa -k hosts_changes
+          -w /sbin/cryptsetup -p x -k luks_operations
+          -e 2
+        mode: "0640"
+      notify: restart auditd
+
+    - name: Enable auditd
+      systemd:
+        name: auditd
+        enabled: yes
+        state: started
+
+  handlers:
+    - name: restart ssh
+      systemd:
+        name: ssh
+        state: restarted
+
+    - name: restart fail2ban
+      systemd:
+        name: fail2ban
+        state: restarted
+
+    - name: restart auditd
+      systemd:
+        name: auditd
+        state: restarted

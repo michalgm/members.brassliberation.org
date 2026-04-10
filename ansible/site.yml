@@ -1,0 +1,4 @@
+---
+- import_playbook: init.yml
+- import_playbook: security.yml
+- import_playbook: docker.yml

@@ -1,0 +1,14 @@
+---
+linux_username: blo
+linux_user_ssh_key_file: /home/dameat/.ssh/id_rsa.pub
+
+ssh_port: 22
+ssh_allow_password_auth: false
+ssh_permit_root_login: "yes"  # Ansible connects as root (key-only)
+ssh_max_auth_tries: 3
+ssh_client_alive_interval: 300
+ssh_client_alive_count_max: 2
+
+fail2ban_bantime: 3600
+fail2ban_findtime: 600
+fail2ban_maxretry: 5

@@ -1,0 +1,81 @@
+---
+- name: Initialize Server
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify required variables are set
+      assert:
+        that:
+          - linux_username is defined
+          - linux_user_ssh_key_file is defined
+        fail_msg: "Required variables not set. Check group_vars/all.yml"
+
+  tasks:
+    - name: Update apt cache and upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+        cache_valid_time: 3600
+
+    - name: Install essential packages
+      apt:
+        name:
+          - curl
+          - wget
+          - git
+          - vim
+          - htop
+          - net-tools
+          - build-essential
+          - python3
+          - python3-pip
+          - restic
+          - fail2ban
+          - unattended-upgrades
+          - apt-listchanges
+        state: present
+
+    - name: Set timezone to UTC
+      community.general.timezone:
+        name: UTC
+
+    - name: Create admin user
+      user:
+        name: "{{ linux_username }}"
+        shell: /bin/bash
+        create_home: yes
+        state: present
+
+    - name: Set up SSH directory for admin user
+      file:
+        path: "/home/{{ linux_username }}/.ssh"
+        state: directory
+        owner: "{{ linux_username }}"
+        group: "{{ linux_username }}"
+        mode: "0700"
+
+    - name: Add SSH public key for admin user
+      ansible.posix.authorized_key:
+        user: "{{ linux_username }}"
+        key: "{{ lookup('file', linux_user_ssh_key_file) }}"
+        state: present
+
+    - name: Configure unattended-upgrades
+      template:
+        src: templates/50unattended-upgrades.j2
+        dest: /etc/apt/apt.conf.d/50unattended-upgrades
+        mode: "0644"
+
+    - name: Enable automatic updates
+      copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Download-Upgradeable-Packages "1";
+          APT::Periodic::AutocleanInterval "1";
+          APT::Periodic::Unattended-Upgrade "1";
+        mode: "0644"

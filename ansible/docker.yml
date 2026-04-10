@@ -1,0 +1,89 @@
+---
+- name: Set up Docker
+  hosts: all
+  become: true
+  gather_facts: true
+
+  handlers:
+    - name: restart docker
+      systemd:
+        name: docker
+        state: restarted
+
+  tasks:
+    - name: Install Docker dependencies
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: yes
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
+        state: present
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Configure Docker daemon DNS
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "dns": ["1.1.1.1", "8.8.8.8"]
+          }
+        mode: "0644"
+      notify: restart docker
+
+    - name: Add admin user to docker group
+      user:
+        name: "{{ linux_username }}"
+        groups: docker
+        append: yes
+
+    - name: Create docker directory
+      file:
+        path: "/home/{{ linux_username }}/docker"
+        state: directory
+        owner: "{{ linux_username }}"
+        group: "{{ linux_username }}"
+        mode: "0755"
+
+    - name: Copy docker files
+      copy:
+        src: "../{{ item }}"
+        dest: "/home/{{ linux_username }}/docker/{{ item }}"
+        owner: "{{ linux_username }}"
+        group: "{{ linux_username }}"
+        mode: "0640"
+      loop:
+        - docker-compose.yml
+        - outline.env
+        - invite-tool.env
+        - invite-tool/
+
+    - name: Flush handlers before compose up
+      meta: flush_handlers
+
+    - name: Start Docker Compose services
+      command: docker compose up -d --build
+      args:
+        chdir: "/home/{{ linux_username }}/docker"

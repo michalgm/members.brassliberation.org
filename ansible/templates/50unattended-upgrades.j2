@@ -1,0 +1,31 @@
+// Unattended-Upgrades configuration
+// Managed by Ansible - do not edit manually
+
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}";
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+
+// List of packages to not update
+Unattended-Upgrade::Package-Blacklist {
+};
+
+// Auto-reboot settings (disabled for encrypted volumes)
+Unattended-Upgrade::Automatic-Reboot "{{ auto_updates_reboot | default(false) | lower }}";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ auto_updates_time | default('03:00') }}";
+
+// Send email on errors
+Unattended-Upgrade::Mail "{{ monitoring_email | default('') }}";
+Unattended-Upgrade::MailReport "on-change";
+
+// Remove unused dependencies
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+// Auto-fix interrupted dpkg
+Dpkg::Options {
+   "--force-confdef";
+   "--force-confold";
+};

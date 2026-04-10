@@ -1,0 +1,105 @@
+services:
+  outline:
+    image: docker.getoutline.com/outlinewiki/outline:latest
+    restart: unless-stopped
+    env_file: ./outline.env
+    expose:
+      - "3000"
+    volumes:
+      - storage-data:/var/lib/outline/data
+    depends_on:
+      - postgres
+      - redis
+
+  redis:
+    image: redis
+    restart: unless-stopped
+    # env_file: ./docker.env
+    expose:
+      - "6379"
+    volumes:
+      - ./redis.conf:/redis.conf
+    command: ["redis-server", "/redis.conf"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    # env_file: ./docker.env
+    expose:
+      - "5432"
+    volumes:
+      - database-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "outline", "-U", "user"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    environment:
+      POSTGRES_USER: 'user'
+      POSTGRES_PASSWORD: 'pass'
+      POSTGRES_DB: 'outline'
+
+  invite-tool:
+    build: ./invite-tool
+    restart: unless-stopped
+    environment:
+      - PORT=3003
+    expose:
+      - "3003"
+    env_file: ./invite-tool.env
+    depends_on:
+      - logto
+
+  https-portal:
+    image: steveltn/https-portal
+    ports:
+      - '80:80'
+      - '443:443'
+    links:
+      - outline
+      - invite-tool
+    restart: always
+    volumes:
+      - https-portal-data:/var/lib/https-portal
+    healthcheck:
+      test: ["CMD", "service", "nginx", "status"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    environment:
+      DOMAINS: >-
+        members.brassliberation.org -> http://outline:3000,
+        auth.members.brassliberation.org -> http://logto:3001,
+        auth-admin.members.brassliberation.org -> http://logto:3002,
+        invite.members.brassliberation.org -> http://invite-tool:3003,
+      STAGE: 'production'
+      WEBSOCKET: 'true'
+      CLIENT_MAX_BODY_SIZE: '0'
+
+  logto:
+    image: svhd/logto:latest
+    restart: unless-stopped
+    expose:
+      - "3001"
+      - "3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TRUST_PROXY_HEADER: 1
+      DB_URL: postgres://user:pass@postgres:5432/logto
+      ENDPOINT: https://auth.members.brassliberation.org
+      ADMIN_ENDPOINT: https://auth-admin.members.brassliberation.org
+      PORT: 3001
+      ADMIN_PORT: 3002
+
+
+volumes:
+  https-portal-data:
+  storage-data:
+  database-data:
