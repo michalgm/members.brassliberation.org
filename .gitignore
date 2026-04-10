@@ -3,7 +3,6 @@
 *.vault
 
 # Ansible
-ansible/inventory/hosts.yml
 # https://raw.githubusercontent.com/github/gitignore/main/Python.gitignore
 # Byte-compiled / optimized / DLL files
 __pycache__/
