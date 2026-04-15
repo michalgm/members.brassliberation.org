@@ -1,9 +1,12 @@
 const { escape: esc } = require("html-escaper");
 // --- Private fragments ---
 
-function nav(user) {
-  if (!user?.isAdmin) return "";
+function nav() {
+  // if (!user?.isAdmin) return "";
+  if (process.env.NODE_ENV === "production") return "";
+
   return `<nav>
+    <a href='/profile'>Profile</a>
     <a href="/invite">Invite Users</a>
     <a href="/members">Manage Members</a>
   </nav>`;
