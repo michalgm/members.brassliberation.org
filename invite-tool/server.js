@@ -83,6 +83,12 @@ app.use(invitationRoutes);
 app.use(profileRouter);
 app.use(adminRouter);
 
+// Generic error handler — must be last and have exactly 4 params
+app.use((err, _req, res, _next) => {
+  console.error("Unhandled error:", err);
+  res.status(500).send(views.errorPage(err));
+});
+
 const init = async () => {
   await outline.loadGroups();
   await logto.loadRoles();

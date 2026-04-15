@@ -7,9 +7,23 @@ const { OUTLINE_WEBHOOK_SECRET } = process.env;
 
 const router = Router();
 
+const resolveEmail = async (payload) => {
+  const payloadEmail = payload?.email || payload.model?.email;
+  if (payloadEmail) {
+    return payloadEmail;
+  }
+
+  const outlineUserId = payload.id;
+  if (!outlineUserId) {
+    return null;
+  }
+  const outlineUser = await outline.getUser(outlineUserId);
+  return outlineUser?.email ?? null;
+};
+
 const handleSignIn = async (payload, res) => {
-  const email = payload.data?.email;
-  const outlineUserId = payload.data?.id;
+  const outlineUserId = payload.id;
+  const email = await resolveEmail(payload);
   if (!email || !outlineUserId) {
     return res.status(400).json({ error: "Missing user email or id in payload" });
   }
@@ -53,15 +67,17 @@ const handleCreate = handleSignIn;
 
 router.post("/group_sync", raw({ type: "application/json" }), async (req, res) => {
   // Verify HMAC-SHA256 signature
-  const signature = req.headers["x-outline-signature"] ?? "";
-  const expected = `sha256=${crypto.createHmac("sha256", OUTLINE_WEBHOOK_SECRET).update(req.body).digest("hex")}`;
-  let signatureValid;
-  try {
-    signatureValid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-  } catch {
-    signatureValid = false;
-  }
+  const header = req.headers["outline-signature"] ?? "";
+  const timestamp = header.split(",")[0].split("=")[1];
+  const signature = header.split(",")[1].split("=")[1];
+  const body = req.body;
+  const expected = crypto
+    .createHmac("sha256", OUTLINE_WEBHOOK_SECRET)
+    .update(`${timestamp}.${body.toString()}`)
+    .digest("hex");
+  const signatureValid = expected === signature;
   if (!signatureValid) {
+    console.error(`Invalid signature on webhook call`);
     return res.status(401).json({ error: "Invalid signature" });
   }
 
@@ -69,14 +85,15 @@ router.post("/group_sync", raw({ type: "application/json" }), async (req, res) =
   try {
     payload = JSON.parse(req.body.toString("utf8"));
   } catch {
+    console.error(`Invalid JSON on webhook call`);
     return res.status(400).json({ error: "Invalid JSON" });
   }
   try {
     switch (payload.event) {
       case "users.signin":
-        return await handleSignIn(payload, res);
+        return await handleSignIn(payload.payload, res);
       case "users.create":
-        return await handleCreate(payload, res);
+        return await handleCreate(payload.payload, res);
       default:
         console.log(`group_sync: ignoring unsupported event type "${payload.event}"`);
         return res.status(200).json({ ok: true, skipped: true });

@@ -68,12 +68,14 @@
         mode: "0755"
 
     - name: Copy docker files
-      copy:
+      ansible.posix.synchronize:
         src: "../{{ item }}"
         dest: "/home/{{ linux_username }}/docker/{{ item }}"
-        owner: "{{ linux_username }}"
-        group: "{{ linux_username }}"
-        mode: "0640"
+        rsync_opts:
+          - "--chown={{ linux_username }}:{{ linux_username }}"
+          - "--chmod=0640"
+          - "--no-motd"
+          - "--exclude=node_modules"
       loop:
         - docker-compose.yml
         - outline.env

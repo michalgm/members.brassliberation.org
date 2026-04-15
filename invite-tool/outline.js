@@ -1,5 +1,4 @@
 const { OUTLINE_URL, OUTLINE_API_KEY } = process.env;
-
 // Groups are loaded once at startup and cached here.
 let cachedGroups = null;
 
@@ -30,6 +29,30 @@ function getGroups() {
   return cachedGroups;
 }
 
+async function getUser(userId) {
+  const data = await outlineApi("users.info", { id: userId });
+  return data.data ?? null;
+}
+
+async function findUserByEmail(email) {
+  const data = await outlineApi("users.list", { emails: [email], limit: 1 });
+  const users = data.data ?? [];
+  return users.find((user) => user.email?.toLowerCase() === email.toLowerCase()) ?? null;
+}
+
+async function suspendUser(userId) {
+  await outlineApi("users.suspend", { id: userId });
+}
+
+async function suspendUserByEmail(email) {
+  const user = await findUserByEmail(email);
+  if (!user) {
+    return false;
+  }
+  await suspendUser(user.id);
+  return true;
+}
+
 async function listUserGroups(userId) {
   const data = await outlineApi("groups.list", { userId, limit: 100 });
   return data.data?.groups ?? [];
@@ -53,4 +76,14 @@ async function removeUserFromGroup(groupId, userId) {
   }
 }
 
-module.exports = { loadGroups, getGroups, listUserGroups, addUserToGroup, removeUserFromGroup };
+module.exports = {
+  loadGroups,
+  getGroups,
+  getUser,
+  findUserByEmail,
+  suspendUser,
+  suspendUserByEmail,
+  listUserGroups,
+  addUserToGroup,
+  removeUserFromGroup,
+};

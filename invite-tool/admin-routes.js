@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const { isEmail } = require("validator");
 const logto = require("./logto");
+const outline = require("./outline");
 const views = require("./views");
 const { requiresWikiAdmin, getFlash, getViewUser } = require("./middleware");
 
@@ -43,7 +44,13 @@ adminRouter.post("/invite", async (req, res) => {
     req.flash("error", `Invalid address(es): ${invalid.join(", ")} — please fix and resubmit.`);
     return res.redirect("/invite");
   }
-  const settled = await Promise.allSettled(emails.map((email) => logto.inviteUser(email, organizationRoleIds)));
+  const settled = await Promise.allSettled(
+    emails.map(async (email) => {
+      const invitations = await logto.getInvitations(email);
+      await Promise.all(invitations.map((inv) => logto.revokeOrganizationInvitation(inv.id)));
+      await logto.inviteUser(email, organizationRoleIds);
+    }),
+  );
   const results = emails.map((email, i) => ({
     email,
     ok: settled[i].status === "fulfilled",
@@ -83,8 +90,19 @@ adminRouter.post("/members/:userId/role", async (req, res) => {
 
 adminRouter.post("/members/:userId/remove", async (req, res) => {
   try {
+    const member = await logto.getUser(req.params.userId);
+    const email = member.primaryEmail;
+
+    let outlineSuspended = false;
+    if (email) {
+      outlineSuspended = await outline.suspendUserByEmail(email);
+    }
+
     await logto.deleteUser(req.params.userId);
-    req.flash("success", "User deleted.");
+    req.flash(
+      "success",
+      outlineSuspended ? "User deleted from Logto and suspended in Outline." : "User deleted from Logto.",
+    );
   } catch (err) {
     console.error("Failed to delete user:", err);
     req.flash("error", `Failed to delete user: ${err.message}`);
@@ -162,6 +180,33 @@ profileRouter.post("/members/:userId/account", async (req, res) => {
   } catch (err) {
     console.error("Failed to update account:", err);
     req.flash("error", `Failed to update account: ${err.message}`);
+  }
+  if (req.session.isAdmin) {
+    return res.redirect(`/members/${userId}/account`);
+  }
+  res.redirect(`/profile`);
+});
+
+
+profileRouter.post("/members/:userId/password", async (req, res) => {
+  const { userId } = req.params;
+  const { password, confirmPassword } = req.body;
+
+  if (req.oidc.user.sub !== userId && !req.session.isAdmin) {
+    req.flash("error", "You can only update your own account.");
+    return res.redirect("/profile");
+  }
+  if (password !== confirmPassword) {
+    req.flash("error", "Passwords do not match.");
+    return res.redirect(`/members/${userId}/account`);
+  }
+
+  try {
+    await logto.setUserPassword(userId, password);
+    req.flash("success", "Password updated.");
+  } catch (err) {
+    console.error("Failed to set password:", err);
+    req.flash("error", `Failed to set password: ${err.message}`);
   }
   if (req.session.isAdmin) {
     return res.redirect(`/members/${userId}/account`);

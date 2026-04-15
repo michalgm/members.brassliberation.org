@@ -265,38 +265,25 @@ function accessDeniedPage(user) {
   );
 }
 
-function invitationJoinPage({ invitationId, email, token, error }) {
-  return renderPage(
-    "Organization Invitation",
-    `
-    ${
-      error
-        ? `<p class="alert error">${esc(error)}</p>`
-        : `<p>You were invited to join this organization${email ? ` as <strong>${esc(email)}</strong>` : ""}.</p>`
-    }
-    <p class="hint">Choose an action below:</p>
-
-    <form method="POST" action="/invitation/accept/start">
-      <input type="hidden" name="id" value="${esc(invitationId || "")}">
-      <input type="hidden" name="one_time_token" value="${esc(token || "")}">
-      <input type="hidden" name="login_hint" value="${esc(email || "")}">
-      <button type="submit">Accept invitation</button>
-    </form>
-
-    <form method="POST" action="/invitation/reject" onsubmit="return confirm('Reject this invitation?')">
-      <input type="hidden" name="id" value="${esc(invitationId || "")}">
-      <button type="submit" class="danger">Reject invitation</button>
-    </form>
-  `,
-  );
-}
-
 function invitationDonePage({ title, message, success = true, continueUrl = null }) {
   return renderPage(
     title,
     `
     <p class="alert ${success ? "success" : "error"}">${esc(message)}</p>
     ${continueUrl ? `<p><a href="${esc(continueUrl)}"><button>Continue</button></a></p>` : ""}
+  `,
+  );
+}
+
+function errorPage(err) {
+  const isDev = process.env.NODE_ENV !== "production";
+  const detail = isDev && err?.message ? `<p class="hint">${esc(err.message)}</p>` : "";
+  return renderPage(
+    "Unexpected Error",
+    `
+    <p class="alert error">Something went wrong. Please try again or contact an administrator if the problem persists.</p>
+    ${detail}
+    <p><a href="/">Go to home</a></p>
   `,
   );
 }
@@ -308,6 +295,6 @@ module.exports = {
   membersPage,
   accountPage,
   accessDeniedPage,
-  invitationJoinPage,
   invitationDonePage,
+  errorPage,
 };
