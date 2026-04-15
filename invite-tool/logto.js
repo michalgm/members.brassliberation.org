@@ -120,7 +120,10 @@ async function acceptOrganizationInvitation(invitationId, acceptedUserId) {
   });
 }
 
-async function revokeOrganizationInvitation(invitationId) {
+async function revokeOrganizationInvitation(invitationId, deleteInvitation = false) {
+  if (deleteInvitation) {
+    return logtoApi(`/api/organization-invitations/${invitationId}`, "DELETE");
+  }
   return await updateOrganizationInvitationStatus(invitationId, { status: "Revoked" });
 }
 

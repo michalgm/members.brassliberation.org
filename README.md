@@ -27,10 +27,6 @@ The `ansible/` directory contains playbooks to provision a fresh Ubuntu server (
 
 ```sh
 cd ansible
-
-# install required collections
-ansible-galaxy collection install -r collections/requirements.yml
-
 # run everything
 ansible-playbook site.yml
 ```

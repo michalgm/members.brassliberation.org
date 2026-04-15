@@ -44,19 +44,19 @@ adminRouter.post("/invite", async (req, res) => {
     req.flash("error", `Invalid address(es): ${invalid.join(", ")} — please fix and resubmit.`);
     return res.redirect("/invite");
   }
-  const settled = await Promise.allSettled(
-    emails.map(async (email) => {
+  const results = [];
+  for (const email of emails) {
+    try {
       const invitations = await logto.getInvitations(email);
-      await Promise.all(invitations.map((inv) => logto.revokeOrganizationInvitation(inv.id)));
+      await Promise.all(invitations.map((inv) => logto.revokeOrganizationInvitation(inv.id, true)));
       await logto.inviteUser(email, organizationRoleIds);
-    }),
-  );
-  const results = emails.map((email, i) => ({
-    email,
-    ok: settled[i].status === "fulfilled",
-    error: settled[i].reason?.message ?? "",
-  }));
-
+      results.push({ email, ok: true, error: "" });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    } catch (err) {
+      console.error(`Failed to invite ${email}:`, err);
+      results.push({ email, ok: false, error: err.message });
+    }
+  }
   res.send(views.inviteResultPage(getViewUser(req), results));
 });
 
