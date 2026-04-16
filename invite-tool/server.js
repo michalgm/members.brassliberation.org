@@ -68,12 +68,25 @@ app.use(
     secret: SESSION_SECRET,
     idpLogout: true,
     idTokenSigningAlg: "ES384",
+    // routes: { logout: false },
     authorizationParams: {
       response_type: "code",
       scope: "openid profile email custom_data urn:logto:scope:organization_roles urn:logto:scope:organizations",
     },
   }),
 );
+
+// // Logto rejects the state/xsrf param that express-openid-connect sends by default,
+// // so we handle logout manually: clear the local session then redirect to Logto's
+// // end_session endpoint without a state parameter.
+// app.get("/logout", (req, res) => {
+//   req.session.destroy();
+//   const params = new URLSearchParams({
+//     client_id: LOGTO_ADMIN_CLIENT_ID,
+//     post_logout_redirect_uri: ADMIN_TOOL_URL,
+//   });
+//   res.redirect(`${LOGTO_ENDPOINT}/oidc/session/end?${params}`);
+// });
 
 
 app.use(checkAdmin);
