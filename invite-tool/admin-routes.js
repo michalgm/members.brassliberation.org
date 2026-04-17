@@ -44,18 +44,34 @@ adminRouter.post("/invite", async (req, res) => {
     req.flash("error", `Invalid address(es): ${invalid.join(", ")} — please fix and resubmit.`);
     return res.redirect("/invite");
   }
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const results = [];
   for (const email of emails) {
-    try {
-      const invitations = await logto.getInvitations(email);
-      await Promise.all(invitations.map((inv) => logto.revokeOrganizationInvitation(inv.id, true)));
-      await logto.inviteUser(email, organizationRoleIds);
-      results.push({ email, ok: true, error: "" });
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    } catch (err) {
-      console.error(`Failed to invite ${email}:`, err);
-      results.push({ email, ok: false, error: err.message });
+    let lastErr;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        if (attempt === 1) {
+          const invitations = await logto.getInvitations(email);
+          await Promise.all(invitations.map((inv) => logto.revokeOrganizationInvitation(inv.id, true)));
+        }
+        await logto.inviteUser(email, organizationRoleIds);
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        const isTransient = err.message.includes("421") || err.message.includes("too many connections");
+        if (!isTransient || attempt === 3) break;
+        console.warn(`Transient error inviting ${email} (attempt ${attempt}), retrying after backoff…`);
+        await sleep(attempt * 3000);
+      }
     }
+    if (lastErr) {
+      console.error(`Failed to invite ${email}:`, lastErr);
+      results.push({ email, ok: false, error: lastErr.message });
+    } else {
+      results.push({ email, ok: true, error: "" });
+    }
+    await sleep(2000);
   }
   res.send(views.inviteResultPage(getViewUser(req), results));
 });

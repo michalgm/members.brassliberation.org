@@ -59,6 +59,7 @@ function renderPage(title, content, user = null, f = null) {
     select { padding: 0.35em 0.5em; font-size: 0.9em; border: 1px solid #ccc; border-radius: 3px; }
     button { padding: 0.5em 1em; font-size: 0.9em; background: #2a6496; color: white; border: none; cursor: pointer; border-radius: 3px; margin-top: 0.6em; }
     button:hover { background: #1f4e75; }
+    button:disabled { background: #7aa8c7; cursor: default; }
     button.danger { background: #b00; }
     button.danger:hover { background: #800; }
     button.secondary { background: #555; }
@@ -107,7 +108,7 @@ function invitePage(user, orgRoles, f) {
   return renderPage(
     "Invite Users",
     `
-    <form method="POST" action="/invite">
+    <form method="POST" action="/invite" onsubmit="const b=this.querySelector('button[type=submit]');b.disabled=true;b.textContent='Sending…'">
       <label for="emails">Email addresses</label>
       <textarea class="emails" id="emails" name="emails" required autofocus
         placeholder="alice@example.com&#10;bob@example.com&#10;carol@example.com"></textarea>
